@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>트레일링 스탑 시뮬레이터</title>
+<style>
+  :root {
+    --bg-primary: #FAFAF7;
+    --bg-secondary: #F1EFE8;
+    --text-primary: #1F1E1D;
+    --text-secondary: #73726C;
+    --text-success: #3B6D11;
+    --text-danger: #A32D2D;
+    --border: rgba(0,0,0,0.12);
+    --border-strong: rgba(0,0,0,0.22);
+    --radius: 8px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-primary: #1F1E1D;
+      --bg-secondary: #2A2926;
+      --text-primary: #F0EFE9;
+      --text-secondary: #A5A39B;
+      --text-success: #97C459;
+      --text-danger: #F09595;
+      --border: rgba(255,255,255,0.12);
+      --border-strong: rgba(255,255,255,0.22);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px;
+    font-family: var(--font);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+  }
+  .ts { font-size: 12px; fill: var(--text-secondary); font-family: var(--font); }
+  .th { font-size: 14px; font-weight: 500; fill: var(--text-primary); font-family: var(--font); }
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text-primary);
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+  }
+  button:hover:not(:disabled) { background: var(--bg-secondary); }
+  button:active:not(:disabled) { transform: scale(0.98); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .ts-explainer { max-width: 720px; margin: 0 auto; }
+  .ts-step-info { display: flex; justify-content: space-between; margin-bottom: 8px; padding: 0 4px; }
+  .ts-step-label { font-size: 13px; color: var(--text-secondary); }
+  .ts-step-title { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+  .ts-callout {
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin: 14px 0;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 56px;
+  }
+  .ts-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 12px 0; }
+  .ts-metric { background: var(--bg-secondary); border-radius: var(--radius); padding: 12px 14px; }
+  .ts-metric-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .ts-metric-value { font-size: 18px; font-weight: 500; }
+  .ts-metric-value.profit { color: var(--text-success); }
+  .ts-metric-value.loss { color: var(--text-danger); }
+  .ts-controls { display: flex; gap: 8px; }
+  .ts-controls button { flex: 1; }
+</style>
+</head>
+<body>
+<div class="ts-explainer">
+  <div class="ts-step-info">
+    <span class="ts-step-label" id="ts-step-label">단계 1 / 5</span>
+    <span class="ts-step-title" id="ts-step-title">매수 시점</span>
+  </div>
+  <svg id="ts-chart" width="100%" viewBox="0 0 680 280" role="img">
+    <title>트레일링 스탑 시뮬레이션</title>
+  </svg>
+  <div class="ts-metrics">
+    <div class="ts-metric">
+      <div class="ts-metric-label">현재 주가</div>
+      <div class="ts-metric-value" id="ts-m-price">10,000원</div>
+    </div>
+    <div class="ts-metric">
+      <div class="ts-metric-label">트레일링 스탑</div>
+      <div class="ts-metric-value" id="ts-m-stop">9,500원</div>
+    </div>
+    <div class="ts-metric">
+      <div class="ts-metric-label">보장 수익</div>
+      <div class="ts-metric-value loss" id="ts-m-profit">-5%</div>
+    </div>
+  </div>
+  <div class="ts-callout" id="ts-callout">1만원에 매수하면서 -5% 트레일링 스탑을 설정. 손절가는 9,500원에서 시작합니다.</div>
+  <div class="ts-controls">
+    <button onclick="tsPrev()" id="ts-btn-prev" disabled>← 이전</button>
+    <button onclick="tsNext()" id="ts-btn-next">다음 →</button>
+  </div>
+</div>
+<script>
+const tsSteps = [
+  { title: '매수 시점', prices: [10000], stops: [9500],
+    callout: '1만원에 매수하면서 -5% 트레일링 스탑을 설정. 손절가는 9,500원에서 시작합니다.',
+    profit: '-5%', profitClass: 'loss' },
+  { title: '주가 상승 ①', prices: [10000, 11000], stops: [9500, 10450],
+    callout: '주가가 11,000원으로 상승. 손절가도 신고가의 -5%인 10,450원으로 자동 갱신. 이제 최소 +4.5% 수익이 잠금 상태!',
+    profit: '+4.5%', profitClass: 'profit' },
+  { title: '주가 신고가 갱신', prices: [10000, 11000, 12000], stops: [9500, 10450, 11400],
+    callout: '주가가 12,000원으로 또 상승. 손절가도 11,400원으로 함께 끌려 올라갑니다. 신고가 갱신 → 손절가 갱신.',
+    profit: '+14%', profitClass: 'profit' },
+  { title: '주가 하락 (핵심!)', prices: [10000, 11000, 12000, 11500], stops: [9500, 10450, 11400, 11400],
+    callout: '주가가 11,500원으로 떨어져도 손절가는 11,400원에 그대로! 트레일링 스탑은 한쪽 방향(위)으로만 움직이고 절대 내려가지 않습니다.',
+    profit: '+14%', profitClass: 'profit' },
+  { title: '손절 발동 → 매도', prices: [10000, 11000, 12000, 11500, 11400], stops: [9500, 10450, 11400, 11400, 11400],
+    callout: '주가가 손절가 11,400원에 닿음 → 자동 매도. +14% 수익 확정. 일반 손절(고정 9,500원)이었으면 못 잡았을 수익입니다.',
+    profit: '+14% 확정', profitClass: 'profit', triggered: true }
+];
+
+let tsCurrent = 0;
+
+function tsDraw(idx) {
+  const step = tsSteps[idx];
+  const svg = document.getElementById('ts-chart');
+  const W = 680, H = 280;
+  const padL = 78, padR = 30, padT = 20, padB = 40;
+  const chartW = W - padL - padR, chartH = H - padT - padB;
+  const minP = 9000, maxP = 12500, range = maxP - minP;
+  const xPos = i => padL + (chartW / 4) * i;
+  const yPrice = p => padT + chartH - ((p - minP) / range) * chartH;
+  let g = '';
+
+  [9000, 10000, 11000, 12000].forEach(p => {
+    const y = yPrice(p);
+    g += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(128,128,128,0.25)" stroke-width="0.5" stroke-dasharray="2 4"/>`;
+    g += `<text x="${padL - 10}" y="${y + 4}" text-anchor="end" class="ts">${(p/1000).toFixed(0)},000원</text>`;
+  });
+
+  const buyY = yPrice(10000);
+  g += `<text x="${W - padR}" y="${buyY - 6}" text-anchor="end" class="ts" opacity="0.7">매수가</text>`;
+
+  if (step.stops.length > 1) {
+    const pts = step.stops.map((s, i) => `${xPos(i)},${yPrice(s)}`).join(' ');
+    g += `<polyline points="${pts}" fill="none" stroke="#D85A30" stroke-width="2" stroke-dasharray="6 3" stroke-linejoin="round"/>`;
+  }
+  if (step.prices.length > 1) {
+    const pts = step.prices.map((p, i) => `${xPos(i)},${yPrice(p)}`).join(' ');
+    g += `<polyline points="${pts}" fill="none" stroke="#378ADD" stroke-width="2.5" stroke-linejoin="round"/>`;
+  }
+  step.prices.forEach((p, i) => { g += `<circle cx="${xPos(i)}" cy="${yPrice(p)}" r="5" fill="#378ADD"/>`; });
+  step.stops.forEach((s, i) => { g += `<circle cx="${xPos(i)}" cy="${yPrice(s)}" r="4" fill="#D85A30"/>`; });
+
+  if (step.triggered) {
+    const lastIdx = step.prices.length - 1;
+    const lx = xPos(lastIdx), ly = yPrice(step.prices[lastIdx]);
+    g += `<circle cx="${lx}" cy="${ly}" r="11" fill="none" stroke="#D85A30" stroke-width="2"/>`;
+    g += `<text x="${lx}" y="${ly - 20}" text-anchor="middle" class="th" fill="#D85A30">매도!</text>`;
+  }
+
+  g += `<g transform="translate(${padL}, ${H - 12})">`;
+  g += `<line x1="0" y1="0" x2="22" y2="0" stroke="#378ADD" stroke-width="2.5"/>`;
+  g += `<text x="28" y="4" class="ts">주가</text>`;
+  g += `<line x1="86" y1="0" x2="108" y2="0" stroke="#D85A30" stroke-width="2" stroke-dasharray="6 3"/>`;
+  g += `<text x="114" y="4" class="ts">트레일링 스탑</text>`;
+  g += `</g>`;
+
+  svg.innerHTML = g;
+
+  document.getElementById('ts-step-label').textContent = `단계 ${idx + 1} / ${tsSteps.length}`;
+  document.getElementById('ts-step-title').textContent = step.title;
+  document.getElementById('ts-m-price').textContent = step.prices[step.prices.length - 1].toLocaleString() + '원';
+  document.getElementById('ts-m-stop').textContent = step.stops[step.stops.length - 1].toLocaleString() + '원';
+  const pe = document.getElementById('ts-m-profit');
+  pe.textContent = step.profit;
+  pe.className = 'ts-metric-value ' + step.profitClass;
+  document.getElementById('ts-callout').textContent = step.callout;
+  document.getElementById('ts-btn-prev').disabled = idx === 0;
+  document.getElementById('ts-btn-next').disabled = idx === tsSteps.length - 1;
+}
+
+function tsNext() { if (tsCurrent < tsSteps.length - 1) { tsCurrent++; tsDraw(tsCurrent); } }
+function tsPrev() { if (tsCurrent > 0) { tsCurrent--; tsDraw(tsCurrent); } }
+
+tsDraw(0);
+</script>
+</body>
+</html>
